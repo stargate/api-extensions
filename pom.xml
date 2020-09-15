@@ -12,6 +12,10 @@
     <artifactId>api-extensions</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <packaging>pom</packaging>
+
+    <name>${project.groupId}:${project.artifactId}</name>
+    <description>Modules to extend API support of Stargate</description>
+    <url>http://github.com/stargate/stargate</url>
     
     <modules>
         <module>sql</module>
@@ -82,5 +86,33 @@
             </plugins>
         </pluginManagement>
     </build>
+
+    <licenses>
+        <license>
+            <name>The Apache Software License, Version 2.0</name>
+            <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+        </license>
+    </licenses>
+
+    <scm>
+        <connection>scm:git:git://github.com/stargate/api-extensions.git</connection>
+        <developerConnection>scm:git:git@github.com:stargate/api-extensions.git</developerConnection>
+        <url>http://github.com/stargate/api-extensions/tree/master</url>
+    </scm>
+
+    <developers>
+        <developer>
+            <name>The Stargate Authors</name>
+            <email>maintainers@stargate.io</email>
+            <organization>Stargate</organization>
+        </developer>
+    </developers>
+
+    <distributionManagement>
+        <repository>
+            <id>ossrh</id>
+            <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
+        </repository>
+    </distributionManagement>
 </project>
 
