@@ -13,24 +13,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package io.stargate.api.sql.plan.rule;
 
-package io.stargate.api.sql.server;
+import io.stargate.api.sql.plan.rel.CassandraFullScan;
+import org.apache.calcite.plan.RelOptRule;
+import org.apache.calcite.plan.RelOptRuleCall;
+import org.apache.calcite.rel.logical.LogicalTableScan;
 
-import org.osgi.framework.BundleActivator;
-import org.osgi.framework.BundleContext;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+public class CassandraScanRule extends RelOptRule {
+  public CassandraScanRule() {
+    super(operand(LogicalTableScan.class, none()), "CassandraScanRule");
+  }
 
-public class SqlActivator implements BundleActivator {
-    private static final Logger log = LoggerFactory.getLogger(SqlActivator.class);
-
-    @Override
-    public void start(BundleContext bundleContext) {
-        log.info("Started");
-    }
-
-    @Override
-    public void stop(BundleContext bundleContext) {
-        log.info("Stopped");
-    }
+  @Override
+  public void onMatch(RelOptRuleCall call) {
+    final LogicalTableScan scan = call.rel(0);
+    call.transformTo(CassandraFullScan.create(scan.getCluster(), scan.getTable()));
+  }
 }

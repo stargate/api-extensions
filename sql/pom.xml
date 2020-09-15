@@ -1,65 +1,33 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
-
-    <parent>
-        <groupId>io.stargate.api</groupId>
-        <artifactId>api-extensions</artifactId>
-        <version>0.0.1-SNAPSHOT</version>
-    </parent>
-
-    <groupId>io.stargate.api.sql</groupId>
-    <artifactId>avatica-sql</artifactId>
-
-    <properties>
-        <junit.version>5.6.2</junit.version>
-    </properties>
-
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.stargate.api</groupId>
+    <artifactId>api-extensions</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+  </parent>
+  <groupId>io.stargate.api.sql</groupId>
+  <artifactId>avatica-sql</artifactId>
+  <packaging>pom</packaging>
+  <properties>
+    <junit.version>5.6.2</junit.version>
+  </properties>
+  <modules>
+    <module>server</module>
+    <module>sqlline-client</module>
+  </modules>
+  <dependencyManagement>
     <dependencies>
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-            <version>1.7.30</version>
-        </dependency>
+      <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-api</artifactId>
+        <version>1.7.30</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.calcite.avatica</groupId>
+        <artifactId>avatica-server</artifactId>
+        <version>1.17.0</version>
+      </dependency>
     </dependencies>
-
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.felix</groupId>
-                <artifactId>maven-bundle-plugin</artifactId>
-                <configuration>
-                    <unpackBundle>true</unpackBundle>
-                    <instructions>
-                        <Bundle-Name>Stargate-Avatica-Server</Bundle-Name>
-                        <Bundle-Description>Supports SQL queries in Stargate through Apache Calcite Avatica</Bundle-Description>
-                        <Bundle-SymbolicName>io.stargate.api.sql</Bundle-SymbolicName>
-                        <Bundle-Activator>io.stargate.api.sql.server.SqlActivator</Bundle-Activator>
-                        <Import-Package>
-                            org.osgi.framework,
-                        </Import-Package>
-                        <Export-Package>
-                            !*
-                        </Export-Package>
-                        <DynamicImport-Package>*</DynamicImport-Package>
-                        <Bundle-ClassPath>.,sjk-core-0.14.jar,{maven-dependencies}</Bundle-ClassPath>
-                        <Embed-Dependency>*;scope=compile|runtime</Embed-Dependency>
-                        <Embed-Transitive>true</Embed-Transitive>
-                    </instructions>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-jar-plugin</artifactId>
-                <configuration>
-                    <archive>
-                        <manifestFile>${project.build.outputDirectory}/META-INF/MANIFEST.MF</manifestFile>
-                    </archive>
-                    <outputDirectory>${project.basedir}/../stargate-lib</outputDirectory>
-                </configuration>
-            </plugin>
-        </plugins>
-    </build>
+  </dependencyManagement>
 </project>
