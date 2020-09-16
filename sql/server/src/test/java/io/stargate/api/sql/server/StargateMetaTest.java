@@ -17,15 +17,26 @@ package io.stargate.api.sql.server;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Matchers.anyString;
+import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.times;
 
 import com.datastax.oss.driver.api.core.uuid.Uuids;
 import io.stargate.api.sql.AbstractDataStoreTest;
 import io.stargate.api.sql.schema.TypeUtils;
 import io.stargate.api.sql.server.SerializingTestDriver.SerializationParams;
+import io.stargate.auth.AuthenticationService;
+import io.stargate.auth.UnauthorizedException;
 import io.stargate.db.Persistence;
 import io.stargate.db.datastore.schema.Column;
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.Date;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.sql.Time;
+import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.stream.Stream;
@@ -38,22 +49,56 @@ import org.mockito.Mockito;
 
 public class StargateMetaTest extends AbstractDataStoreTest {
 
+  private static final String TEST_PASSWORD = "test_password";
+
   private final Persistence<?, ?, ?> persistence;
+  private final AuthenticationService authenticator;
 
-  public StargateMetaTest() {
+  public StargateMetaTest() throws Exception {
     persistence = Mockito.mock(Persistence.class, Mockito.RETURNS_DEEP_STUBS);
-
     Mockito.when(persistence.newDataStore(Mockito.any(), Mockito.any())).thenReturn(dataStore);
+
+    authenticator = Mockito.mock(AuthenticationService.class);
+    Mockito.when(authenticator.createToken(Mockito.anyString(), Mockito.eq(TEST_PASSWORD)))
+        .thenReturn("token");
+  }
+
+  public static Stream<Arguments> allColumnParams() {
+    return Arrays.stream(SerializationParams.values())
+        .flatMap(
+            s ->
+                sampleValues(table3, true).entrySet().stream()
+                    .filter(e -> e.getKey().startsWith("c_"))
+                    .map(e -> Arguments.of(s, e.getKey(), e.getValue())));
   }
 
   private Connection newConnection(SerializationParams serialization) throws SQLException {
-    return SerializingTestDriver.newConnection(serialization, new StargateMeta(persistence));
+    return newConnection(serialization, "test_" + serialization, TEST_PASSWORD);
+  }
+
+  private Connection newConnection(SerializationParams ser, String user, String password)
+      throws SQLException {
+    return SerializingTestDriver.newConnection(
+        ser, new StargateMeta(persistence, authenticator), user, password);
   }
 
   @ParameterizedTest
   @EnumSource(SerializationParams.class)
   public void openConnection(SerializationParams ser) throws SQLException {
     assertThat(newConnection(ser)).isNotNull();
+  }
+
+  @ParameterizedTest
+  @EnumSource(SerializationParams.class)
+  public void openConnectionWithWrongCredentials(SerializationParams ser) throws Exception {
+    Mockito.when(authenticator.createToken(anyString(), eq("bad_password")))
+        .thenThrow(new UnauthorizedException("test-message"));
+    assertThatThrownBy(() -> newConnection(ser, "test_user", "bad_password"))
+        .hasMessageContaining("test-message");
+    assertThatThrownBy(() -> newConnection(ser, "test_user", null))
+        .hasMessageContaining("Missing credentials in connection properties");
+    assertThatThrownBy(() -> newConnection(ser, null, TEST_PASSWORD))
+        .hasMessageContaining("Missing credentials in connection properties");
   }
 
   @ParameterizedTest
@@ -208,15 +253,6 @@ public class StargateMetaTest extends AbstractDataStoreTest {
             String.format("INSERT INTO test_ks.supported_types (pk, %s) VALUES (?, ?)", column),
             "example",
             TypeUtils.jdbcToDriverValue(value, type));
-  }
-
-  public static Stream<Arguments> allColumnParams() {
-    return Arrays.stream(SerializationParams.values())
-        .flatMap(
-            s ->
-                sampleValues(table3, true).entrySet().stream()
-                    .filter(e -> e.getKey().startsWith("c_"))
-                    .map(e -> Arguments.of(s, e.getKey(), e.getValue())));
   }
 
   @ParameterizedTest
@@ -466,11 +502,13 @@ public class StargateMetaTest extends AbstractDataStoreTest {
 
   @FunctionalInterface
   private interface SqlGetter<T> {
+
     Object from(ResultSet rs, T column) throws SQLException;
   }
 
   @FunctionalInterface
   private interface SqlSetter<T, V> {
+
     void set(PreparedStatement statement, T column, V value) throws SQLException;
   }
 }

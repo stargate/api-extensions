@@ -16,6 +16,8 @@
 package io.stargate.api.sql.server;
 
 import com.google.common.collect.ImmutableList;
+import io.stargate.auth.AuthenticationService;
+import io.stargate.auth.UnauthorizedException;
 import io.stargate.db.ClientState;
 import io.stargate.db.Persistence;
 import java.util.Collections;
@@ -34,9 +36,11 @@ public class StargateMeta implements Meta {
   private final ConcurrentMap<String, StargateConnection> connections = new ConcurrentHashMap<>();
 
   private final Persistence persistence;
+  private final AuthenticationService authenticator;
 
-  public StargateMeta(Persistence<?, ?, ?> persistence) {
+  public StargateMeta(Persistence<?, ?, ?> persistence, AuthenticationService authenticator) {
     this.persistence = persistence;
+    this.authenticator = authenticator;
   }
 
   private void newConnection(ConnectionHandle ch, Map<String, String> info) {
@@ -44,8 +48,15 @@ public class StargateMeta implements Meta {
         ch.id,
         sid -> {
           String username = info.get("user");
-          if (username == null) {
-            throw new IllegalArgumentException("Missing user name in connection properties.");
+          String password = info.get("password");
+          if (username == null || password == null) {
+            throw new IllegalArgumentException("Missing credentials in connection properties.");
+          }
+
+          try {
+            authenticator.createToken(username, password);
+          } catch (UnauthorizedException e) {
+            throw new IllegalArgumentException(e);
           }
 
           ClientState clientState = persistence.newClientState(username);
@@ -387,7 +398,9 @@ public class StargateMeta implements Meta {
   }
 
   @Override
-  public void closeConnection(ConnectionHandle ch) {}
+  public void closeConnection(ConnectionHandle ch) {
+    // TODO: closeConnection
+  }
 
   @Override
   public boolean syncResults(StatementHandle sh, QueryState state, long offset) {
@@ -395,10 +408,14 @@ public class StargateMeta implements Meta {
   }
 
   @Override
-  public void commit(ConnectionHandle ch) {}
+  public void commit(ConnectionHandle ch) {
+    // nop for now
+  }
 
   @Override
-  public void rollback(ConnectionHandle ch) {}
+  public void rollback(ConnectionHandle ch) {
+    // nop for now
+  }
 
   @Override
   public ConnectionProperties connectionSync(ConnectionHandle ch, ConnectionProperties connProps) {

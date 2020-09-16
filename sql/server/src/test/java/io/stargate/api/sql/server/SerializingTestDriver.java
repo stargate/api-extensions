@@ -63,10 +63,12 @@ public class SerializingTestDriver extends Driver {
           1,
           0);
 
-  public static Connection newConnection(SerializationParams params, StargateMeta meta)
+  public static Connection newConnection(
+      SerializationParams params, StargateMeta meta, String user, String password)
       throws SQLException {
     Properties connectionProperties = new Properties();
-    connectionProperties.put("user", "test_" + params);
+    if (user != null) connectionProperties.put("user", user);
+    if (password != null) connectionProperties.put("password", password);
 
     Service service = new LocalService(meta);
     connectionProperties.put(HANDLER, params.handlerFactory.apply(service));

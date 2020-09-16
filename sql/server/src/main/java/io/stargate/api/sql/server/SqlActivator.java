@@ -15,18 +15,17 @@
  */
 package io.stargate.api.sql.server;
 
+import io.stargate.auth.AuthenticationService;
 import io.stargate.db.Persistence;
-import java.util.Collection;
 import org.osgi.framework.BundleActivator;
 import org.osgi.framework.BundleContext;
-import org.osgi.framework.InvalidSyntaxException;
-import org.osgi.framework.ServiceEvent;
-import org.osgi.framework.ServiceListener;
+import org.osgi.framework.Filter;
 import org.osgi.framework.ServiceReference;
+import org.osgi.util.tracker.ServiceTracker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class SqlActivator implements BundleActivator, ServiceListener {
+public class SqlActivator implements BundleActivator {
 
   private static final Logger log = LoggerFactory.getLogger(SqlActivator.class);
 
@@ -34,49 +33,25 @@ public class SqlActivator implements BundleActivator, ServiceListener {
       System.getProperty(
           "stargate.sql.persistence_id",
           System.getProperty("stargate.persistence_id", "CassandraPersistence"));
-  private static final String PERSISTENCE_FILTER =
-      String.format("(Identifier=%s)", PERSISTENCE_IDENTIFIER);
 
-  private BundleContext context;
-  private ServiceReference<Persistence> backendRef;
+  private static final String DEPENDENCIES_FILTER =
+      String.format(
+          "(|(Identifier=%s)(objectClass=%s))",
+          PERSISTENCE_IDENTIFIER, AuthenticationService.class.getName());
+
+  private Tracker tracker;
   private AvaticaServer server;
 
   @Override
-  public void start(BundleContext context) {
-    this.context = context;
-
-    try {
-      context.addServiceListener(this, PERSISTENCE_FILTER);
-    } catch (InvalidSyntaxException ise) {
-      throw new RuntimeException(ise);
-    }
-
-    maybeStart();
+  public void start(BundleContext context) throws Exception {
+    tracker = new Tracker(context, context.createFilter(DEPENDENCIES_FILTER));
+    tracker.open();
   }
 
   @Override
   public void stop(BundleContext context) {
     stopServer();
-  }
-
-  @Override
-  public void serviceChanged(ServiceEvent event) {
-    switch (event.getType()) {
-      case (ServiceEvent.REGISTERED):
-        maybeStart();
-        break;
-
-      case (ServiceEvent.UNREGISTERING):
-        maybeStop(event.getServiceReference());
-        break;
-    }
-  }
-
-  private synchronized void maybeStop(ServiceReference<?> ref) {
-    if (ref.equals(backendRef)) {
-      log.info("Backend persistence became unavailable: {}", ref.getBundle());
-      stopServer();
-    }
+    tracker.close();
   }
 
   private synchronized void stopServer() {
@@ -87,32 +62,56 @@ public class SqlActivator implements BundleActivator, ServiceListener {
     }
 
     server = null;
-    backendRef = null;
   }
 
-  private synchronized void maybeStart() {
+  private synchronized void maybeStart(Persistence persistence, AuthenticationService auth) {
     if (server != null) {
       return;
     }
 
-    Collection<ServiceReference<Persistence>> refs;
-    try {
-      refs = context.getServiceReferences(Persistence.class, PERSISTENCE_FILTER);
-    } catch (InvalidSyntaxException e) {
-      throw new IllegalStateException(e);
+    server = new AvaticaServer(persistence, auth);
+    log.info("Starting Avatica Server");
+    server.start();
+  }
+
+  private class Tracker extends ServiceTracker<Object, Object> {
+
+    private Persistence persistence;
+    private AuthenticationService auth;
+
+    public Tracker(BundleContext context, Filter filter) {
+      super(context, filter, null);
     }
 
-    for (ServiceReference<Persistence> ref : refs) {
-      Persistence backend = context.getService(ref);
-      if (backend != null) {
-        backendRef = ref;
+    @Override
+    public Object addingService(ServiceReference<Object> ref) {
+      Object service = super.addingService(ref);
+      if (persistence == null || service instanceof Persistence) {
         log.info("Using backend persistence: {}", ref.getBundle());
-
-        server = new AvaticaServer(backend);
-        log.info("Starting Avatica Server");
-        server.start();
-        break;
+        persistence = (Persistence) service;
+      } else if (auth == null || service instanceof AuthenticationService) {
+        log.info("Using authentication service: {}", ref.getBundle());
+        auth = (AuthenticationService) service;
       }
+
+      if (persistence != null && auth != null) {
+        maybeStart(persistence, auth);
+      }
+
+      return service;
+    }
+
+    @Override
+    public void removedService(ServiceReference<Object> reference, Object service) {
+      super.removedService(reference, service);
+
+      if (persistence == service) {
+        persistence = null;
+      } else if (auth == service) {
+        auth = null;
+      }
+
+      stopServer();
     }
   }
 }

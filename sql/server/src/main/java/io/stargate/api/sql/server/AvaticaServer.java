@@ -15,6 +15,7 @@
  */
 package io.stargate.api.sql.server;
 
+import io.stargate.auth.AuthenticationService;
 import io.stargate.db.Persistence;
 import java.io.IOException;
 import javax.servlet.ServletException;
@@ -33,8 +34,8 @@ public class AvaticaServer {
   private final ClassLoader contextClassLoader = getClass().getClassLoader();
   private final HttpServer server;
 
-  public AvaticaServer(Persistence backend) {
-    Meta meta = new StargateMeta(backend);
+  public AvaticaServer(Persistence backend, AuthenticationService authenticator) {
+    Meta meta = new StargateMeta(backend, authenticator);
     Service service = new LocalService(meta);
 
     server = new HttpServer.Builder<>().withPort(PORT).withHandler(new Handler(service)).build();
