@@ -22,15 +22,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class SqlActivator implements BundleActivator {
-    private static final Logger log = LoggerFactory.getLogger(SqlActivator.class);
+  private static final Logger log = LoggerFactory.getLogger(SqlActivator.class);
 
-    @Override
-    public void start(BundleContext bundleContext) {
-        log.info("Started");
-    }
+  @Override
+  public void start(BundleContext bundleContext) {
+    log.info("Started");
+  }
 
-    @Override
-    public void stop(BundleContext bundleContext) {
-        log.info("Stopped");
-    }
+  @Override
+  public void stop(BundleContext bundleContext) {
+    log.info("Stopped");
+  }
 }
