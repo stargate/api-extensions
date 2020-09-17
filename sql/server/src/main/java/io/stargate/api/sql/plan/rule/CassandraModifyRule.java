@@ -18,15 +18,22 @@ package io.stargate.api.sql.plan.rule;
 import io.stargate.api.sql.plan.rel.CassandraModify;
 import org.apache.calcite.adapter.enumerable.EnumerableConvention;
 import org.apache.calcite.plan.RelOptCluster;
-import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
+import org.apache.calcite.plan.RelRule;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.logical.LogicalTableModify;
 
-public class CassandraModifyRule extends RelOptRule {
+public class CassandraModifyRule extends RelRule<RelRule.Config> {
+
+  private static final Config CONFIG =
+      Config.EMPTY
+          .withDescription(CassandraModifyRule.class.getSimpleName())
+          .withOperandSupplier(b -> b.operand(LogicalTableModify.class).noInputs())
+          .as(Config.class);
+
   public CassandraModifyRule() {
-    super(operand(LogicalTableModify.class, any()), "CassandraModifyRule");
+    super(CONFIG);
   }
 
   @Override

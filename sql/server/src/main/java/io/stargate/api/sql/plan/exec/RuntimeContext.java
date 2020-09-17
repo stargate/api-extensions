@@ -106,6 +106,10 @@ public class RuntimeContext implements DataContext {
       return add(DataSourceStatement.fullScan(dataStore, table));
     }
 
+    public String newSelectByKey(StargateTable table, List<Column> keyColumns) {
+      return add(DataSourceStatement.selectByKey(dataStore, table, keyColumns));
+    }
+
     public String newUpsert(StargateTable table, List<Column> columns) {
       return add(DataSourceStatement.upsert(dataStore, table, columns));
     }

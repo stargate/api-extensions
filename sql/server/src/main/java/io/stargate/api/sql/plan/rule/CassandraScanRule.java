@@ -16,13 +16,20 @@
 package io.stargate.api.sql.plan.rule;
 
 import io.stargate.api.sql.plan.rel.CassandraFullScan;
-import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
+import org.apache.calcite.plan.RelRule;
 import org.apache.calcite.rel.logical.LogicalTableScan;
 
-public class CassandraScanRule extends RelOptRule {
+public class CassandraScanRule extends RelRule<RelRule.Config> {
+
+  private static final Config CONFIG =
+      Config.EMPTY
+          .withDescription(CassandraScanRule.class.getSimpleName())
+          .withOperandSupplier(b -> b.operand(LogicalTableScan.class).noInputs())
+          .as(Config.class);
+
   public CassandraScanRule() {
-    super(operand(LogicalTableScan.class, none()), "CassandraScanRule");
+    super(CONFIG);
   }
 
   @Override

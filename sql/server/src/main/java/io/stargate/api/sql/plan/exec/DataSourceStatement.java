@@ -20,7 +20,12 @@ import io.stargate.api.sql.schema.StargateTable;
 import io.stargate.api.sql.schema.TypeUtils;
 import io.stargate.db.datastore.DataStore;
 import io.stargate.db.datastore.ResultSet;
-import io.stargate.db.datastore.query.*;
+import io.stargate.db.datastore.query.ImmutableValue;
+import io.stargate.db.datastore.query.ImmutableWhereCondition;
+import io.stargate.db.datastore.query.MixinPreparedStatement;
+import io.stargate.db.datastore.query.Value;
+import io.stargate.db.datastore.query.Where;
+import io.stargate.db.datastore.query.WhereCondition;
 import io.stargate.db.datastore.schema.Column;
 import io.stargate.db.datastore.schema.Table;
 import java.util.Collections;
@@ -30,6 +35,7 @@ import java.util.concurrent.CompletableFuture;
 import org.apache.cassandra.stargate.db.ConsistencyLevel;
 
 public class DataSourceStatement {
+
   public static final ConsistencyLevel DEFAULT_CL = ConsistencyLevel.LOCAL_QUORUM;
 
   private final DataStore dataStore;
@@ -73,6 +79,25 @@ public class DataSourceStatement {
     return new DataSourceStatement(dataStore, prepared, columns);
   }
 
+  public static DataSourceStatement selectByKey(
+      DataStore dataStore, StargateTable sqlTable, List<Column> keyColumns) {
+    Table table = sqlTable.table();
+    List<Where<?>> wheres = exactWhere(keyColumns);
+    List<Column> columns = table.columns();
+
+    MixinPreparedStatement<?> prepared =
+        dataStore
+            .query()
+            .select()
+            .column(columns)
+            .from(sqlTable.keyspace(), table)
+            .where(wheres)
+            .consistencyLevel(DEFAULT_CL)
+            .prepare();
+
+    return new DataSourceStatement(dataStore, prepared, columns);
+  }
+
   public static DataSourceStatement upsert(
       DataStore dataStore, StargateTable sqlTable, List<Column> columns) {
     Table table = sqlTable.table();
@@ -104,20 +129,7 @@ public class DataSourceStatement {
   public static DataSourceStatement delete(
       DataStore dataStore, StargateTable sqlTable, List<Column> keyColumns) {
     Table table = sqlTable.table();
-
-    ImmutableList.Builder<Where<?>> list = ImmutableList.builder();
-    int idx = 0;
-    for (Column c : keyColumns) {
-      int i = idx++;
-      Column.ColumnType type = Objects.requireNonNull(c.type());
-      list.add(
-          ImmutableWhereCondition.<Object[]>builder()
-              .column(c)
-              .bindingFunction(p -> bind(type, i, p))
-              .predicate(WhereCondition.Predicate.Eq)
-              .build());
-    }
-    ImmutableList<Where<?>> wheres = list.build();
+    List<Where<?>> wheres = exactWhere(keyColumns);
 
     MixinPreparedStatement<?> prepared =
         dataStore
@@ -129,5 +141,22 @@ public class DataSourceStatement {
             .prepare();
 
     return new DataSourceStatement(dataStore, prepared, Collections.emptyList());
+  }
+
+  private static List<Where<?>> exactWhere(List<Column> columns) {
+    ImmutableList.Builder<Where<?>> list = ImmutableList.builder();
+    int idx = 0;
+    for (Column c : columns) {
+      int i = idx++;
+      Column.ColumnType type = Objects.requireNonNull(c.type());
+      list.add(
+          ImmutableWhereCondition.<Object[]>builder()
+              .column(c)
+              .bindingFunction(p -> bind(type, i, p))
+              .predicate(WhereCondition.Predicate.Eq)
+              .build());
+    }
+
+    return list.build();
   }
 }

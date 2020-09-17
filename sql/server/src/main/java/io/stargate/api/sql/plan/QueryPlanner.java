@@ -19,6 +19,7 @@ import com.google.common.collect.ImmutableList;
 import io.stargate.api.sql.plan.exec.NoOpSpakHandler;
 import io.stargate.api.sql.plan.exec.RuntimeContext;
 import io.stargate.api.sql.plan.rule.CassandraModifyRule;
+import io.stargate.api.sql.plan.rule.CassandraPrimaryKeyQueryRule;
 import io.stargate.api.sql.plan.rule.CassandraScanRule;
 import io.stargate.api.sql.schema.ImmutableStargateSchema;
 import io.stargate.api.sql.schema.StargateTable;
@@ -100,6 +101,7 @@ public class QueryPlanner {
 
     planner.addRule(new CassandraScanRule());
     planner.addRule(new CassandraModifyRule());
+    planner.addRule(new CassandraPrimaryKeyQueryRule());
 
     RelOptCluster cluster = RelOptCluster.create(planner, new RexBuilder(typeFactory));
 

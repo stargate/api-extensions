@@ -19,7 +19,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.eq;
-import static org.mockito.Mockito.times;
 
 import com.datastax.oss.driver.api.core.uuid.Uuids;
 import io.stargate.api.sql.AbstractDataStoreTest;
@@ -162,6 +161,8 @@ public class StargateMetaTest extends AbstractDataStoreTest {
     assertThat(rs.getString(1)).contains("x INTEGER");
     assertThat(rs.getString(1)).contains("y VARCHAR");
     assertThat(rs.next()).isFalse();
+
+    ignorePreparedExecutions();
   }
 
   private void assertTest1Data(ResultSet rs) throws SQLException {
@@ -179,6 +180,8 @@ public class StargateMetaTest extends AbstractDataStoreTest {
   public void simpleInsert(SerializationParams serialization) throws SQLException {
     Connection connection = newConnection(serialization);
     Statement statement = connection.createStatement();
+
+    withAnyInsertInfo(table2).returningNothing();
 
     int updateCount = statement.executeUpdate("INSERT INTO test_ks.test2 (x, y) VALUES (1, 'a')");
     assertThat(updateCount).isEqualTo(1);
@@ -235,24 +238,20 @@ public class StargateMetaTest extends AbstractDataStoreTest {
       SerializationParams ser, String column, V value, SqlSetter<Integer, V> setter)
       throws SQLException {
     Connection connection = newConnection(ser);
-    PreparedStatement statement =
-        connection.prepareStatement(
-            String.format(
-                "update test_ks.supported_types set %s = ? where %s = ?", column, column));
+
+    String cql =
+        String.format("update test_ks.supported_types set %s = ? where %s = ?", column, column);
+
+    Column.ColumnType type = table3.column(column).type();
+    assertThat(type).isNotNull();
+
+    withQuery(table3, cql, "example", TypeUtils.jdbcToDriverValue(value, type)).returningNothing();
+    PreparedStatement statement = connection.prepareStatement(cql);
 
     setter.set(statement, 1, value);
     setter.set(statement, 2, value);
     int updateCount = statement.executeUpdate();
     assertThat(updateCount).isEqualTo(1);
-
-    Column.ColumnType type = table3.column(column).type();
-    assertThat(type).isNotNull();
-
-    Mockito.verify(dataStore, times(1))
-        .query(
-            String.format("INSERT INTO test_ks.supported_types (pk, %s) VALUES (?, ?)", column),
-            "example",
-            TypeUtils.jdbcToDriverValue(value, type));
   }
 
   @ParameterizedTest

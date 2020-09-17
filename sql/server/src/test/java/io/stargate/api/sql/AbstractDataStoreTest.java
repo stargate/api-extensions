@@ -17,6 +17,9 @@ package io.stargate.api.sql;
 
 import static io.stargate.db.datastore.schema.Column.Kind.PartitionKey;
 import static io.stargate.db.datastore.schema.Column.Kind.Regular;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.eq;
+import static org.mockito.Matchers.matches;
 
 import com.datastax.oss.driver.api.core.data.CqlDuration;
 import com.datastax.oss.driver.api.core.uuid.Uuids;
@@ -40,21 +43,30 @@ import java.nio.ByteBuffer;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import org.apache.cassandra.stargate.db.ConsistencyLevel;
 import org.assertj.core.api.Assertions;
+import org.hamcrest.CoreMatchers;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.mockito.ArgumentMatcher;
 import org.mockito.Mockito;
+import org.mockito.internal.matchers.AnyVararg;
 
 public class AbstractDataStoreTest {
+
   public static final BigDecimal BIG_DECIMAL_EXAMPLE =
       BigDecimal.valueOf(Long.MAX_VALUE).multiply(BigDecimal.TEN).add(BigDecimal.valueOf(0.12345d));
 
-  private static final Table table1 =
+  protected static final Table table1 =
       ImmutableTable.builder()
           .keyspace("test_ks")
           .name("test1")
@@ -62,12 +74,24 @@ public class AbstractDataStoreTest {
               ImmutableColumn.builder().name("a").type(Column.Type.Int).kind(PartitionKey).build())
           .build();
 
-  private static final Table table2 =
+  protected static final Table table2 =
       ImmutableTable.builder()
           .keyspace("test_ks")
           .name("test2")
           .addColumns(
               ImmutableColumn.builder().name("x").type(Column.Type.Int).kind(PartitionKey).build())
+          .addColumns(
+              ImmutableColumn.builder().name("y").type(Column.Type.Text).kind(Regular).build())
+          .build();
+
+  protected static final Table table2a =
+      ImmutableTable.builder()
+          .keyspace("test_ks")
+          .name("test2a")
+          .addColumns(
+              ImmutableColumn.builder().name("x1").type(Column.Type.Int).kind(PartitionKey).build())
+          .addColumns(
+              ImmutableColumn.builder().name("x2").type(Column.Type.Int).kind(PartitionKey).build())
           .addColumns(
               ImmutableColumn.builder().name("y").type(Column.Type.Text).kind(Regular).build())
           .build();
@@ -175,67 +199,32 @@ public class AbstractDataStoreTest {
           .name("test_ks")
           .addTables(table1)
           .addTables(table2)
+          .addTables(table2a)
           .addTables(table3)
           .build();
 
   private static final Schema schema = ImmutableSchema.builder().addKeyspaces(keyspace).build();
 
   protected final DataStore dataStore;
+  private final Collection<ExpectedExecution> expectedExecutions = new ArrayList<>();
 
   public AbstractDataStoreTest() {
-    dataStore = Mockito.mock(DataStore.class, Mockito.RETURNS_DEEP_STUBS);
+    dataStore = Mockito.mock(DataStore.class);
     Mockito.when(dataStore.schema()).thenReturn(schema);
 
     Mockito.when(dataStore.query()).thenAnswer(invocation -> new QueryBuilder(dataStore));
 
-    PreparedStatement prepared1 = Mockito.mock(PreparedStatement.class);
-    Mockito.when(
-            prepared1.execute(Mockito.eq(dataStore), Mockito.<Optional<ConsistencyLevel>>any()))
-        .thenAnswer(
-            inv ->
-                CompletableFuture.completedFuture(
-                    ListBackedResultSet.of(
-                        table1,
-                        ImmutableList.of(ImmutableMap.of("a", 20), ImmutableMap.of("a", 10)))));
+    withQuery(table1, "SELECT a FROM %s")
+        .returning(ImmutableList.of(ImmutableMap.of("a", 20), ImmutableMap.of("a", 10)));
 
-    Mockito.when(dataStore.prepare(Mockito.matches(".*test1.*"), Mockito.any()))
-        .thenReturn(prepared1);
+    withQuery(table2, "SELECT x, y FROM %s")
+        .returning(
+            ImmutableList.of(
+                ImmutableMap.of("x", 1, "y", "row_1"), ImmutableMap.of("x", 2, "y", "row_2")));
 
-    PreparedStatement prepared2 = Mockito.mock(PreparedStatement.class);
-    Mockito.when(
-            prepared2.execute(Mockito.eq(dataStore), Mockito.<Optional<ConsistencyLevel>>any()))
-        .thenAnswer(
-            inv ->
-                CompletableFuture.completedFuture(
-                    ListBackedResultSet.of(
-                        table2,
-                        ImmutableList.of(
-                            ImmutableMap.of("x", 1, "y", "row_1"),
-                            ImmutableMap.of("x", 2, "y", "row_2")))));
-
-    Mockito.when(dataStore.prepare(Mockito.matches(".*test2.*"), Mockito.any()))
-        .thenReturn(prepared2);
-
-    PreparedStatement prepared3 = Mockito.mock(PreparedStatement.class);
-    Mockito.when(
-            prepared3.execute(Mockito.eq(dataStore), Mockito.<Optional<ConsistencyLevel>>any()))
-        .thenAnswer(
-            inv ->
-                CompletableFuture.completedFuture(
-                    ListBackedResultSet.of(table3, ImmutableList.of(sampleValues(table3, false)))));
-
-    Mockito.when(dataStore.prepare(Mockito.matches(".*supported_types.*"), Mockito.any()))
-        .thenReturn(prepared3);
-
-    Mockito.when(dataStore.prepare(Mockito.matches("(INSERT|DELETE).*"), Mockito.any()))
-        .thenAnswer(
-            inv ->
-                (PreparedStatement)
-                    (dataStore, cl, parameters) -> {
-                      dataStore.query((String) inv.getArguments()[0], parameters);
-                      return CompletableFuture.completedFuture(
-                          ListBackedResultSet.of(table1, Collections.emptyList()));
-                    });
+    withAnySelectFrom(table3).returning(ImmutableList.of(sampleValues(table3, false)));
+    withAnyInsertInfo(table3).returningNothing();
+    withAnyUpdateOf(table3).returningNothing();
   }
 
   protected static Map<String, Object> sampleValues(Table table, boolean client) {
@@ -293,5 +282,136 @@ public class AbstractDataStoreTest {
                     throw new IllegalStateException(e);
                   }
                 }));
+  }
+
+  protected QueryExpectation withQuery(Table table, String cql, Object... params) {
+    cql = String.format(cql, keyspace.name() + "." + table.name());
+    return new QueryExpectation(table, Pattern.quote(cql), params);
+  }
+
+  protected QueryExpectation withAnySelectFrom(Table table) {
+    String regex = "SELECT.*FROM.*" + keyspace.name() + "\\." + table.name() + ".*";
+    return new QueryExpectation(table, regex, new Object[0]);
+  }
+
+  protected QueryExpectation withAnyUpdateOf(Table table) {
+    String regex = "UPDATE.*" + keyspace.name() + "\\." + table.name() + ".*";
+    return new QueryExpectation(table, regex);
+  }
+
+  protected QueryExpectation withAnyInsertInfo(Table table) {
+    String regex = "INSERT INTO.*" + keyspace.name() + "\\." + table.name() + ".*";
+    return new QueryExpectation(table, regex);
+  }
+
+  protected QueryExpectation withAnyDeleteFrom(Table table) {
+    String regex = "DELETE.*FROM.*" + keyspace.name() + "\\." + table.name() + ".*";
+    return new QueryExpectation(table, regex);
+  }
+
+  protected void withNoOtherCqlStatements() {
+    Mockito.when(dataStore.prepare(any(), any()))
+        .thenAnswer(
+            inv -> {
+              Object cql = inv.getArguments()[0];
+              Assertions.fail("Unexpected prepare call: " + cql);
+              return null;
+            });
+  }
+
+  @BeforeEach
+  public void clearExpectedExecutions() {
+    expectedExecutions.clear();
+  }
+
+  @AfterEach
+  public void checkExpectedExecutions() {
+    expectedExecutions.forEach(ExpectedExecution::validate);
+  }
+
+  protected void ignorePreparedExecutions() {
+    expectedExecutions.clear();
+  }
+
+  protected class QueryExpectation {
+
+    private final Table table;
+    private final String cqlRegEx;
+    private final Object[] params;
+    private final ArgumentMatcher<?> matchesParams;
+
+    private QueryExpectation(Table table, String cqlRegEx, Object[] params) {
+      this.cqlRegEx = cqlRegEx;
+      this.table = table;
+      this.params = params;
+      matchesParams =
+          new AnyVararg() {
+            @Override
+            public boolean matches(Object arg) {
+              return CoreMatchers.equalTo(params).matches(arg);
+            }
+          };
+    }
+
+    private QueryExpectation(Table table, String cqlRegEx) {
+      this.cqlRegEx = cqlRegEx;
+      this.table = table;
+      this.params = new Object[0];
+      matchesParams = new AnyVararg();
+    }
+
+    public void returningNothing() {
+      returning(Collections.emptyList());
+    }
+
+    public void returning(List<Map<String, Object>> rows) {
+      final ExpectedExecution expectedExecution = new ExpectedExecution(this);
+
+      PreparedStatement prepared = Mockito.mock(PreparedStatement.class);
+      Mockito.when(prepared.execute(eq(dataStore), any(), Mockito.argThat(matchesParams)))
+          .thenAnswer(
+              inv -> {
+                // for later verification by test code
+                dataStore.query(expectedExecution.actualCql, params);
+
+                expectedExecution.executed();
+                return CompletableFuture.completedFuture(ListBackedResultSet.of(table, rows));
+              });
+
+      Mockito.when(dataStore.prepare(matches(cqlRegEx), any()))
+          .thenAnswer(
+              inv -> {
+                expectedExecution.prepared((String) inv.getArguments()[0]);
+                return prepared;
+              });
+    }
+  }
+
+  private class ExpectedExecution {
+
+    private final QueryExpectation query;
+    private String actualCql;
+    private boolean executed;
+
+    private ExpectedExecution(QueryExpectation query) {
+      this.query = query;
+    }
+
+    private void validate() {
+      Assertions.assertThat(
+              Arrays.asList(
+                  "The following query was prepared but not executed", actualCql, query.params))
+          .matches(x -> executed);
+    }
+
+    private void executed() {
+      executed = true;
+    }
+
+    private void prepared(String cql) {
+      Assertions.assertThat(cql).isNotNull();
+      actualCql = cql;
+      expectedExecutions.add(this);
+    }
   }
 }
